@@ -1,0 +1,6 @@
+[default.general]
+chip = "STM32F072RBHx"
+
+[default.rtt]
+enabled = true
+channels = [{ up = 0 }]
