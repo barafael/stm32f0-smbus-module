@@ -41,6 +41,8 @@ const APP: () = {
         // Alias peripherals
         let mut dp: pac::Peripherals = ctx.device;
 
+        dp.RCC.apb2enr.modify(|_, w| w.syscfgen().set_bit());
+
         rprintln!("Initializing peripherals");
         let mut rcc = dp
             .RCC
