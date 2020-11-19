@@ -20,6 +20,7 @@ use stm32f0xx_hal::{
     pac,
     prelude::*,
     i2c::I2c,
+    stm32f0,
 };
 
 use cortex_m::interrupt::free as disable_interrupts;
@@ -42,6 +43,8 @@ const APP: () = {
         let mut dp: pac::Peripherals = ctx.device;
 
         dp.RCC.apb2enr.modify(|_, w| w.syscfgen().set_bit());
+        dp.RCC.apb1enr.modify(|_, w| w.i2c1en().set_bit());
+        dp.RCC.cfgr3.modify(|_, w| w.i2c1sw().sysclk());
 
         rprintln!("Initializing peripherals");
         let mut rcc = dp
@@ -82,6 +85,8 @@ const APP: () = {
             )
         });
 
+        const I2C_MODE_SMBUS_AUTOEND_WITH_PEC: u32 = (1 << 25) | (1 << 26);
+
         unsafe {
             dp.I2C1.icr.write(|w| w.bits(0xFF));
 
@@ -95,7 +100,7 @@ const APP: () = {
             dp.I2C1.oar1.modify(|_, w| w.oa1en().set_bit());
             dp.I2C1.oar1.write(|w| w.oa1().bits(0x4e));
             dp.I2C1.oar1.modify(|_, w| w.oa1en().set_bit());
-            //dp.I2C1.cr1.modify(|_, w| w.smbhen().set_bit().smbden().set_bit())
+            dp.I2C1.cr1.modify(|r, w| w.bits(r.bits() | I2C_MODE_SMBUS_AUTOEND_WITH_PEC));
         }
 
         //I2c<I2C1, PB8<Alternate<AF1>>, PB9<Alternate<AF1>>>,
