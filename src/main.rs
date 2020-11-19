@@ -22,8 +22,6 @@ use stm32f0xx_hal::{
     i2c::I2c,
 };
 
-use cortex_m::interrupt::free as disable_interrupts;
-
 #[app(device = stm32f0xx_hal::pac, peripherals = true)]
 const APP: () = {
     struct Resources {
@@ -55,10 +53,10 @@ const APP: () = {
             .freeze(&mut dp.FLASH);
 
         let gpioa = dp.GPIOA.split(&mut rcc);
-        let led = disable_interrupts(|cs| gpioa.pa5.into_push_pull_output(cs));
+        let led = gpioa.pa5.into_push_pull_output(ctx.cs);
 
         let gpioc = dp.GPIOC.split(&mut rcc);
-        let user_button = disable_interrupts(|cs| gpioc.pc13.into_floating_input(cs));
+        let user_button = gpioc.pc13.into_floating_input(ctx.cs);
 
         dp.SYSCFG.exticr4.write(|w| w.exti13().pc13());
 
@@ -75,12 +73,8 @@ const APP: () = {
 
         let gpiob = dp.GPIOB.split(&mut rcc);
 
-        let (scl, sda): (PB8<Alternate<AF1>>, PB9<Alternate<AF1>>) = disable_interrupts(|cs| {
-            (
-            gpiob.pb8.into_alternate_af1(cs),
-            gpiob.pb9.into_alternate_af1(cs)
-            )
-        });
+        let (scl, sda): (PB8<Alternate<AF1>>, PB9<Alternate<AF1>>) =
+            (gpiob.pb8.into_alternate_af1(ctx.cs), gpiob.pb9.into_alternate_af1(ctx.cs));
 
         unsafe {
             dp.I2C1.icr.write(|w| w.bits(0xFF));
