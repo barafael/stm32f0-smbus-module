@@ -8,18 +8,18 @@ use rtic::app;
 use rtt_target::{rprintln, rtt_init_print};
 
 use crate::pac::I2C1;
-use stm32f0xx_hal::{gpio::gpiob::PB8, rcc};
 use stm32f0xx_hal::gpio::gpiob::PB9;
 use stm32f0xx_hal::gpio::Alternate;
 use stm32f0xx_hal::gpio::AF1;
+use stm32f0xx_hal::{gpio::gpiob::PB8, rcc};
 
 use stm32f0xx_hal::{
     gpio::gpioa::PA5,
     gpio::gpioc::PC13,
-    gpio::{Input, Output, PushPull, Floating},
+    gpio::{Floating, Input, Output, PushPull},
+    i2c::I2c,
     pac,
     prelude::*,
-    i2c::I2c,
     stm32f0,
 };
 
@@ -80,8 +80,8 @@ const APP: () = {
 
         let (scl, sda): (PB8<Alternate<AF1>>, PB9<Alternate<AF1>>) = disable_interrupts(|cs| {
             (
-            gpiob.pb8.into_alternate_af1(cs),
-            gpiob.pb9.into_alternate_af1(cs)
+                gpiob.pb8.into_alternate_af1(cs),
+                gpiob.pb9.into_alternate_af1(cs),
             )
         });
 
@@ -95,12 +95,16 @@ const APP: () = {
             dp.I2C1.oar2.modify(|_, w| w.oa2en().clear_bit());
             dp.I2C1.cr1.modify(|_, w| w.nostretch().clear_bit());
             dp.I2C1.cr1.modify(|_, w| w.pe().clear_bit());
-            dp.I2C1.cr1.modify(|_, w| w.anfoff().set_bit().dnf().no_filter());
+            dp.I2C1
+                .cr1
+                .modify(|_, w| w.anfoff().set_bit().dnf().no_filter());
             dp.I2C1.cr1.modify(|_, w| w.pe().set_bit());
             dp.I2C1.oar1.modify(|_, w| w.oa1en().set_bit());
             dp.I2C1.oar1.write(|w| w.oa1().bits(0x4e));
             dp.I2C1.oar1.modify(|_, w| w.oa1en().set_bit());
-            dp.I2C1.cr1.modify(|r, w| w.bits(r.bits() | I2C_MODE_SMBUS_AUTOEND_WITH_PEC));
+            dp.I2C1
+                .cr1
+                .modify(|r, w| w.bits(r.bits() | I2C_MODE_SMBUS_AUTOEND_WITH_PEC));
         }
 
         //I2c<I2C1, PB8<Alternate<AF1>>, PB9<Alternate<AF1>>>,
@@ -108,7 +112,7 @@ const APP: () = {
             exti,
             user_button,
             led,
-            i2c: dp.I2C1
+            i2c: dp.I2C1,
         }
     }
 
@@ -122,7 +126,7 @@ const APP: () = {
     }
 
     #[task(binds = I2C1, resources = [exti, user_button, led])]
-    fn i2c1_interrupt(ctx: i2c1_interrupt::Context) { }
+    fn i2c1_interrupt(ctx: i2c1_interrupt::Context) {}
 
     #[task(binds = EXTI4_15, resources = [exti, user_button, led])]
     fn exti_4_15_interrupt(ctx: exti_4_15_interrupt::Context) {
