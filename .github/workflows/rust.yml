@@ -17,4 +17,4 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Build
-      run: rustup target add thumbv6m-none-eabi && cargo build --verbose
+      run: rustup target add thumbv6m-none-eabi && cargo build --release --verbose
