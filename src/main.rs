@@ -183,7 +183,12 @@ const APP: () = {
                 ctx.resources.transmission_state.dir = SMBusDirection::SlaveToMaster;
                 ctx.resources.transmission_state.transmitted_count = 0;
                 execute_smbus_command(ctx.resources.transmission_state);
-                //ctx.resources.i2c.isr.txe().set_bit();
+
+                ctx.resources
+                    .i2c
+                    .isr
+                    .modify(|r, w| unsafe { w.bits(r.bits() | 1) });
+
                 ctx.resources.i2c.cr2.modify(|_, w| {
                     w.nbytes()
                         .bits(ctx.resources.transmission_state.bytes_to_transmit)
@@ -214,7 +219,7 @@ const APP: () = {
             }
         }
 
-        /* Handle TX empty */
+        /* Handle TX buffer empty */
         if isr_reader.txe().is_empty() {
             rprintln!("TX buffer empty");
             //ctx.resources.i2c.txdr.write()
@@ -265,7 +270,7 @@ const APP: () = {
 };
 
 fn execute_smbus_command(state: &mut SMBusState) {
-    state.transmit_buffer[0] = 0xa0;
-    state.transmit_buffer[1] = 0xb0;
+    state.transmit_buffer[0] += 1;
+    state.transmit_buffer[1] += 1;
     state.bytes_to_transmit = 2;
 }
