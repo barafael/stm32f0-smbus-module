@@ -20,6 +20,13 @@ use stm32f0xx_hal::{
     prelude::*,
 };
 
+#[derive(Default, Debug)]
+pub struct ExampleState {
+    rec_byte_data: u8,
+    rec_word_data: u16,
+    rec_block_data: [u8; 32],
+}
+
 use cortex_m::interrupt::free as disable_interrupts;
 
 #[derive(Debug)]
@@ -45,6 +52,7 @@ pub struct SMBusState {
     transmit_buffer: [u8; TRANSMISSION_SIZE],
     received_count: u8,
     transmitted_count: u8,
+    data: ExampleState,
 }
 
 #[app(device = stm32f0xx_hal::pac, peripherals = true)]
@@ -55,6 +63,7 @@ const APP: () = {
         led: PA5<Output<PushPull>>,
         i2c: pac::I2C1,
         transmission_state: SMBusState,
+        data: ExampleState,
     }
 
     #[init]
@@ -129,7 +138,7 @@ const APP: () = {
                 .cr1
                 .modify(|_, w| w.anfoff().set_bit().dnf().no_filter());
             dp.I2C1.cr1.modify(|_, w| w.pe().set_bit());
-            dp.I2C1.oar1.write(|w| w.oa1().bits(0x33));
+            dp.I2C1.oar1.write(|w| w.oa1().bits(0x32));
             dp.I2C1
                 .cr1
                 .modify(|r, w| w.bits(r.bits() | I2C_MODE_SMBUS_AUTOEND_WITH_PEC));
@@ -148,7 +157,8 @@ const APP: () = {
             dp.I2C1.cr2.modify(|_, w| w.nbytes().bits(0x1));
         }
 
-        let state = SMBusState::default();
+        let smbus_state = SMBusState::default();
+        let example_state = ExampleState::default();
 
         //dp.I2C1.rxdr.read().rxdata().bits();
         //dp.I2C1.cr2.modify(|_, w| w.nbytes().bits(ctx.resources.transmission_state.bytes_to_transmit));
@@ -158,7 +168,8 @@ const APP: () = {
             user_button,
             led,
             i2c: dp.I2C1,
-            transmission_state: state,
+            transmission_state: smbus_state,
+            data: example_state,
         }
     }
 
@@ -171,7 +182,7 @@ const APP: () = {
         }
     }
 
-    #[task(binds = I2C1, resources = [i2c, user_button, led, transmission_state], priority = 1)]
+    #[task(binds = I2C1, resources = [i2c, user_button, led, transmission_state, data], priority = 1)]
     fn i2c1_interrupt(ctx: i2c1_interrupt::Context) {
         let isr_reader = ctx.resources.i2c.isr.read();
         let data_reader = ctx.resources.i2c.rxdr.read();
@@ -182,7 +193,8 @@ const APP: () = {
             if ctx.resources.i2c.isr.read().dir().is_read() {
                 ctx.resources.transmission_state.dir = SMBusDirection::SlaveToMaster;
                 ctx.resources.transmission_state.transmitted_count = 0;
-                execute_smbus_command(ctx.resources.transmission_state);
+
+                execute_smbus_command(ctx.resources.transmission_state, ctx.resources.data);
 
                 ctx.resources
                     .i2c
@@ -210,7 +222,7 @@ const APP: () = {
                 ctx.resources.transmission_state.received_count = 1;
                 ctx.resources.transmission_state.data_ready = true;
 
-                execute_smbus_command(ctx.resources.transmission_state);
+                execute_smbus_command(ctx.resources.transmission_state, ctx.resources.data);
 
                 ctx.resources.i2c.icr.write(|w| w.stopcf().set_bit());
             }
@@ -222,7 +234,6 @@ const APP: () = {
         /* Handle TX buffer empty */
         if isr_reader.txe().is_empty() {
             rprintln!("TX buffer empty");
-            //ctx.resources.i2c.txdr.write()
             ctx.resources.i2c.txdr.write(|w| {
                 w.txdata().bits(
                     ctx.resources.transmission_state.transmit_buffer
@@ -269,8 +280,66 @@ const APP: () = {
     }
 };
 
-fn execute_smbus_command(state: &mut SMBusState) {
-    state.transmit_buffer[0] += 1;
-    state.transmit_buffer[1] += 1;
-    state.bytes_to_transmit = 2;
+fn execute_smbus_command(state: &mut SMBusState, data: &mut ExampleState) {
+    rprintln!("{:x?}", state.receive_buffer);
+
+    match state.dir {
+        SMBusDirection::MasterToSlave => match state.receive_buffer[0] {
+            2 => {
+                data.rec_byte_data = state.receive_buffer[1];
+            }
+            3 => match state.receive_buffer[1] {
+                0x1f => {
+                    data.rec_byte_data = state.receive_buffer[2];
+                }
+                _ => {
+                    rprintln!(
+                        "Unsupported command: {:x}. Number of bytes: {:x}",
+                        state.receive_buffer[1],
+                        state.receive_buffer[0]
+                    );
+                }
+            },
+            4 => match state.receive_buffer[1] {
+                0xaf => {
+                    let word: u16 =
+                        state.receive_buffer[2] as u16 | (state.receive_buffer[3] as u16) << 8;
+                    data.rec_word_data = word;
+                }
+                _ => {
+                    rprintln!(
+                        "Unsupported command: {:x}. Number of bytes: {:x}",
+                        state.receive_buffer[1],
+                        state.receive_buffer[0]
+                    );
+                }
+            },
+            5..=32 => match state.receive_buffer[1] {
+                0xdd => {
+                    // parse block
+                }
+                _ => {
+                    rprintln!(
+                        "Unsupported command: {:x}. Number of bytes: {:x}",
+                        state.receive_buffer[1],
+                        state.receive_buffer[0]
+                    );
+                }
+            },
+            _ => {
+                unreachable!("Block transfers larger than 32 bytes are not supported!");
+            }
+        },
+        SMBusDirection::SlaveToMaster => match state.receive_buffer[0] {
+            2 => match state.receive_buffer[1] {
+                0xab => {
+                    state.transmit_buffer[0] = 0xab;
+                    state.transmit_buffer[1] = 0xcd;
+                    state.bytes_to_transmit = 2;
+                }
+                _ => rprintln!("TODO"),
+            },
+            _ => rprintln!("TODO"),
+        },
+    }
 }
