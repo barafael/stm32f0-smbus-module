@@ -192,6 +192,7 @@ const APP: () = {
             rprintln!("Address matched");
             if ctx.resources.i2c.isr.read().dir().is_read() {
                 ctx.resources.transmission_state.dir = SMBusDirection::SlaveToMaster;
+                ctx.resources.transmission_state.transmit_buffer.iter_mut().for_each(|p| *p = 0);
                 ctx.resources.transmission_state.transmitted_count = 0;
 
                 execute_smbus_command(ctx.resources.transmission_state, ctx.resources.data);
@@ -208,6 +209,7 @@ const APP: () = {
             } else {
                 ctx.resources.transmission_state.received_count = 1;
                 ctx.resources.transmission_state.dir = SMBusDirection::MasterToSlave;
+                ctx.resources.transmission_state.receive_buffer.iter_mut().for_each(|p| *p = 0);
             }
         }
 
