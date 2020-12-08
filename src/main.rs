@@ -4,7 +4,11 @@
 #![no_main]
 
 use panic_halt as _;
+
+use core::convert::TryInto;
+
 use rtic::app;
+
 use rtt_target::{rprintln, rtt_init_print};
 
 use stm32f0xx_hal::gpio::gpiob::PB8;
@@ -38,21 +42,24 @@ impl Default for SMBCommand {
     }
 }
 
-impl core::convert::From<u8> for SMBCommand {
-    fn from(v: u8) -> Self {
-        match v {
-            0x00 => Self::NoCommand,
-            0x01 => Self::RWDCommand,
-            0x02 => Self::WBKCommand,
-            0x03 => Self::WBDCommand,
-            0x04 => Self::SBCommand,
-            0x05 => Self::RBKCommand,
-            0x06 => Self::RBDCommand,
-            _ => Self::NoCommand,
+impl core::convert::TryFrom<u8> for SMBCommand {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0x00 => Ok(Self::NoCommand),
+            0x01 => Ok(Self::RWDCommand),
+            0x02 => Ok(Self::WBKCommand),
+            0x03 => Ok(Self::WBDCommand),
+            0x04 => Ok(Self::SBCommand),
+            0x05 => Ok(Self::RBKCommand),
+            0x06 => Ok(Self::RBDCommand),
+            _ => Err(()),
         }
     }
 }
 
+use core::convert::TryFrom;
 use cortex_m::interrupt::free as disable_interrupts;
 
 #[derive(Default, Debug)]
@@ -259,7 +266,8 @@ const APP: () = {
         if isr_reader.rxne().is_not_empty() {
             let data = data_reader.rxdata().bits();
             if ctx.resources.transmission_state.current_command == SMBCommand::NoCommand {
-                ctx.resources.transmission_state.current_command = data.into();
+                let command = data.try_into().unwrap();
+                ctx.resources.transmission_state.current_command = command;
                 match ctx.resources.transmission_state.current_command {
                     SMBCommand::SBCommand => {
                         // SB
