@@ -46,7 +46,8 @@ const TRANSMISSION_SIZE: usize = 32;
 #[derive(Default, Debug)]
 pub struct SMBusState {
     dir: SMBusDirection,
-    data_ready: bool,
+    repeated_transmission_in_progress: bool,
+    read_register: u8,
     bytes_to_transmit: u8,
     receive_buffer: [u8; TRANSMISSION_SIZE],
     transmit_buffer: [u8; TRANSMISSION_SIZE],
@@ -187,12 +188,19 @@ const APP: () = {
         let isr_reader = ctx.resources.i2c.isr.read();
         let data_reader = ctx.resources.i2c.rxdr.read();
 
+        rprintln!("Entering interrupt handler");
+
+        print_sources(&isr_reader);
+
         /* Handle Address match */
         if isr_reader.addr().is_match_() {
-            rprintln!("Address matched");
             if ctx.resources.i2c.isr.read().dir().is_read() {
                 ctx.resources.transmission_state.dir = SMBusDirection::SlaveToMaster;
-                ctx.resources.transmission_state.transmit_buffer.iter_mut().for_each(|p| *p = 0);
+                ctx.resources
+                    .transmission_state
+                    .transmit_buffer
+                    .iter_mut()
+                    .for_each(|p| *p = 0);
                 ctx.resources.transmission_state.transmitted_count = 0;
 
                 execute_smbus_command(ctx.resources.transmission_state, ctx.resources.data);
@@ -209,7 +217,11 @@ const APP: () = {
             } else {
                 ctx.resources.transmission_state.received_count = 1;
                 ctx.resources.transmission_state.dir = SMBusDirection::MasterToSlave;
-                ctx.resources.transmission_state.receive_buffer.iter_mut().for_each(|p| *p = 0);
+                ctx.resources
+                    .transmission_state
+                    .receive_buffer
+                    .iter_mut()
+                    .for_each(|p| *p = 0);
             }
         }
 
@@ -217,12 +229,10 @@ const APP: () = {
 
         /* Handle Stop */
         if isr_reader.stopf().is_stop() {
-            rprintln!("Stop event");
             if ctx.resources.transmission_state.received_count >= 2 {
                 ctx.resources.transmission_state.receive_buffer[0] =
                     ctx.resources.transmission_state.received_count;
                 ctx.resources.transmission_state.received_count = 1;
-                ctx.resources.transmission_state.data_ready = true;
 
                 execute_smbus_command(ctx.resources.transmission_state, ctx.resources.data);
 
@@ -235,25 +245,22 @@ const APP: () = {
 
         /* Handle TX buffer empty */
         if isr_reader.txe().is_empty() {
-            rprintln!("TX buffer empty");
-            ctx.resources.i2c.txdr.write(|w| {
-                w.txdata().bits(
-                    ctx.resources.transmission_state.transmit_buffer
-                        [ctx.resources.transmission_state.transmitted_count as usize],
-                )
-            });
+            let data = ctx.resources.transmission_state.transmit_buffer
+                    [ctx.resources.transmission_state.transmitted_count as usize];
+            rprintln!("Data to send: {:x}", data);
+            ctx.resources.i2c.txdr.write(|w| w.txdata().bits(data));
             if ctx.resources.transmission_state.transmitted_count
-                < ctx.resources.transmission_state.bytes_to_transmit
-            {
+                < ctx.resources.transmission_state.bytes_to_transmit {
                 ctx.resources.transmission_state.transmitted_count += 1;
             }
         }
 
         /* Handle receive buffer not empty */
         if isr_reader.rxne().is_not_empty() {
+            let data = data_reader.rxdata().bits();
+            rprintln!("Received data: {:x}", data);
             ctx.resources.transmission_state.receive_buffer
-                [ctx.resources.transmission_state.received_count as usize] =
-                data_reader.rxdata().bits();
+                [ctx.resources.transmission_state.received_count as usize] = data;
             ctx.resources.transmission_state.received_count += 1;
             if ctx.resources.transmission_state.received_count >= TRANSMISSION_SIZE as u8 - 1 {
                 rprintln!("Buffer full!");
@@ -282,14 +289,23 @@ const APP: () = {
     }
 };
 
+// reduce nesting
+// move to module
+// derive from struct?!?
 fn execute_smbus_command(state: &mut SMBusState, data: &mut ExampleState) {
-    rprintln!("{:x?}", state.receive_buffer);
+    rprintln!("Entering smbus handler. receive_buffer: {:x?}", state.receive_buffer);
 
     match state.dir {
         SMBusDirection::MasterToSlave => match state.receive_buffer[0] {
-            2 => {
-                data.rec_byte_data = state.receive_buffer[1];
-            }
+            0 => match state.receive_buffer[1] {
+                0 => data.rec_byte_data = state.receive_buffer[1],
+                0xab => {
+                    rprintln!("Starting repeated transmission");
+                    state.repeated_transmission_in_progress = true;
+                    state.read_register = state.receive_buffer[1];
+                }
+                _ => rprintln!("Unsupported command: {}", state.receive_buffer[1]),
+            },
             3 => match state.receive_buffer[1] {
                 0x1f => {
                     data.rec_byte_data = state.receive_buffer[2];
@@ -332,16 +348,91 @@ fn execute_smbus_command(state: &mut SMBusState, data: &mut ExampleState) {
                 unreachable!("Block transfers larger than 32 bytes are not supported!");
             }
         },
-        SMBusDirection::SlaveToMaster => match state.receive_buffer[0] {
-            2 => match state.receive_buffer[1] {
-                0xab => {
-                    state.transmit_buffer[0] = 0xab;
-                    state.transmit_buffer[1] = 0xcd;
-                    state.bytes_to_transmit = 2;
+        SMBusDirection::SlaveToMaster => {
+            if state.repeated_transmission_in_progress {
+                rprintln!("Reacting to repeated transmission");
+                state.repeated_transmission_in_progress = false;
+                match state.read_register {
+                    0xab => {
+                        state.transmit_buffer[0] = 0xab;
+                        state.transmit_buffer[1] = 0xcd;
+                        state.bytes_to_transmit = 2;
+                    }
+                    _ => rprintln!(
+                        "repeated start, read register {} not valid.",
+                        state.read_register
+                    ),
                 }
-                _ => rprintln!("TODO"),
-            },
-            _ => rprintln!("TODO"),
-        },
+            } else {
+                rprintln!("Regular transmission.");
+                match state.receive_buffer[0] {
+                    0 | 1 => {
+                        state.transmit_buffer[0] = 0xfd;
+                        state.bytes_to_transmit = 1;
+                    }
+                    2 => match state.receive_buffer[1] {
+                        _ => rprintln!("TODO 1"),
+                    },
+                    _ => rprintln!("TODO 2"),
+                }
+            }
+        }
     }
+}
+
+fn print_sources(b: &stm32f0xx_hal::stm32f0::R<u32, stm32f0xx_hal::stm32f0::Reg<u32, pac::i2c1::_ISR>>) {
+    rprintln!("{");
+    if b.txe().is_empty() {
+        rprintln!("TXE Transmit Data Register Empty");
+    }
+    if b.txis().is_empty() {
+        rprintln!("TXIS Transmit Interrupt Status");
+    }
+    if b.rxne().is_not_empty() {
+        rprintln!("RXNE Receive Data Register Not Empty");
+    }
+    if b.addr().is_match_() {
+        rprintln!("ADDR Address Match");
+    }
+    if b.nackf().is_nack() {
+        rprintln!("NACKF Not Acknowledge Flag");
+    }
+    if b.stopf().is_stop() {
+        rprintln!("STOPF Stop Event Flag")
+    }
+    if b.tc().is_complete() {
+        rprintln!("TC Transfer Complete");
+    }
+    if b.tcr().is_complete() {
+        rprintln!("TCR Transfer Complete Reload")
+    }
+    if b.berr().is_error() {
+        rprintln!("BERR Bus Error");
+    }
+    if b.arlo().is_lost() {
+        rprintln!("ARLO Arbitration Lost");
+    }
+    if b.ovr().is_overrun() {
+        rprintln!("OVR Overrun Error");
+    }
+    if b.pecerr().is_match_() {
+        rprintln!("PECERR is match");
+    } else {
+        rprintln!("PECERR is no match");
+    }
+    if b.timeout().is_timeout() {
+        rprintln!("TIMEOUT Timeout Flag")
+    }
+    if b.alert().is_alert() {
+        rprintln!("ALERT SMBus Alert Flag");
+    }
+    if b.busy().is_busy() {
+        rprintln!("BUSY Busy Flag");
+    }
+    if b.dir().is_read() {
+        rprintln!("DIR is read");
+    } else {
+        rprintln!("DIR is write");
+    }
+    rprintln!("}");
 }
