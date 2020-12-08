@@ -20,39 +20,46 @@ use stm32f0xx_hal::{
     prelude::*,
 };
 
-#[derive(Default, Debug)]
-pub struct ExampleState {
-    rec_byte_data: u8,
-    rec_word_data: u16,
-    rec_block_data: [u8; 32],
+#[derive(Debug, Eq, PartialEq)]
+#[repr(u8)]
+enum SMBCommand {
+    NoCommand = 0x00,
+    RWDCommand = 0x01,
+    WBKCommand = 0x02,
+    WBDCommand = 0x03,
+    SBCommand = 0x04,
+    RBKCommand = 0x05,
+    RBDCommand = 0x06,
+}
+
+impl Default for SMBCommand {
+    fn default() -> Self {
+        Self::NoCommand
+    }
+}
+
+impl core::convert::From<u8> for SMBCommand {
+    fn from(v: u8) -> Self {
+        match v {
+            0x00 => Self::NoCommand,
+            0x01 => Self::RWDCommand,
+            0x02 => Self::WBKCommand,
+            0x03 => Self::WBDCommand,
+            0x04 => Self::SBCommand,
+            0x05 => Self::RBKCommand,
+            0x06 => Self::RBDCommand,
+            _ => Self::NoCommand,
+        }
+    }
 }
 
 use cortex_m::interrupt::free as disable_interrupts;
 
-#[derive(Debug)]
-enum SMBusDirection {
-    SlaveToMaster,
-    MasterToSlave,
-}
-
-impl Default for SMBusDirection {
-    fn default() -> Self {
-        SMBusDirection::MasterToSlave
-    }
-}
-
-const TRANSMISSION_SIZE: usize = 32;
-
 #[derive(Default, Debug)]
 pub struct SMBusState {
-    dir: SMBusDirection,
-    data_ready: bool,
-    bytes_to_transmit: u8,
-    receive_buffer: [u8; TRANSMISSION_SIZE],
-    transmit_buffer: [u8; TRANSMISSION_SIZE],
-    received_count: u8,
-    transmitted_count: u8,
-    data: ExampleState,
+    send_data: u8,
+    param_idx: u8,
+    current_command: SMBCommand,
 }
 
 #[app(device = stm32f0xx_hal::pac, peripherals = true)]
@@ -63,7 +70,6 @@ const APP: () = {
         led: PA5<Output<PushPull>>,
         i2c: pac::I2C1,
         transmission_state: SMBusState,
-        data: ExampleState,
     }
 
     #[init]
@@ -74,16 +80,12 @@ const APP: () = {
         // Alias peripherals
         let mut dp: pac::Peripherals = ctx.device;
 
-        rprintln!("Initializing clocks");
-
         dp.RCC.apb2enr.modify(|_, w| w.syscfgen().set_bit());
         dp.RCC
             .apb1enr
             .modify(|_, w| w.i2c1en().set_bit().pwren().set_bit());
         dp.RCC.cfgr3.modify(|_, w| w.i2c1sw().sysclk());
         dp.RCC.ahbenr.modify(|_, w| w.iopben().set_bit());
-
-        rprintln!("Initializing peripherals");
 
         let mut rcc = dp
             .RCC
@@ -110,9 +112,7 @@ const APP: () = {
         dp.EXTI.ftsr.write(|w| w.tr13().set_bit());
         dp.EXTI.rtsr.write(|w| w.tr13().set_bit());
 
-        rprintln!("Instantiating dp.EXTI...");
         let exti = dp.EXTI;
-        rprintln!("Defining late resources...");
 
         let gpiob = dp.GPIOB.split(&mut rcc);
 
@@ -128,6 +128,7 @@ const APP: () = {
         unsafe {
             dp.I2C1.icr.reset();
 
+            dp.I2C1.timingr.write(|w| w.bits(0x00200000));
             dp.I2C1.cr2.modify(|_, w| w.autoend().set_bit());
             dp.I2C1.oar1.modify(|_, w| w.oa1en().clear_bit());
             dp.I2C1.oar2.modify(|_, w| w.oa2en().clear_bit());
@@ -158,7 +159,6 @@ const APP: () = {
         }
 
         let smbus_state = SMBusState::default();
-        let example_state = ExampleState::default();
 
         //dp.I2C1.rxdr.read().rxdata().bits();
         //dp.I2C1.cr2.modify(|_, w| w.nbytes().bits(ctx.resources.transmission_state.bytes_to_transmit));
@@ -169,7 +169,6 @@ const APP: () = {
             led,
             i2c: dp.I2C1,
             transmission_state: smbus_state,
-            data: example_state,
         }
     }
 
@@ -182,84 +181,128 @@ const APP: () = {
         }
     }
 
-    #[task(binds = I2C1, resources = [i2c, user_button, led, transmission_state, data], priority = 1)]
+    #[task(binds = I2C1, resources = [i2c, user_button, led, transmission_state], priority = 1)]
     fn i2c1_interrupt(ctx: i2c1_interrupt::Context) {
         let isr_reader = ctx.resources.i2c.isr.read();
         let data_reader = ctx.resources.i2c.rxdr.read();
 
         /* Handle Address match */
         if isr_reader.addr().is_match_() {
-            rprintln!("Address matched");
             if ctx.resources.i2c.isr.read().dir().is_read() {
-                ctx.resources.transmission_state.dir = SMBusDirection::SlaveToMaster;
-                ctx.resources.transmission_state.transmit_buffer.iter_mut().for_each(|p| *p = 0);
-                ctx.resources.transmission_state.transmitted_count = 0;
-
-                execute_smbus_command(ctx.resources.transmission_state, ctx.resources.data);
-
+                /* Set TXE in ISR (not exposed by svd, so unsafe) */
                 ctx.resources
                     .i2c
                     .isr
                     .modify(|r, w| unsafe { w.bits(r.bits() | 1) });
-
-                ctx.resources.i2c.cr2.modify(|_, w| {
-                    w.nbytes()
-                        .bits(ctx.resources.transmission_state.bytes_to_transmit)
-                });
-            } else {
-                ctx.resources.transmission_state.received_count = 1;
-                ctx.resources.transmission_state.dir = SMBusDirection::MasterToSlave;
-                ctx.resources.transmission_state.receive_buffer.iter_mut().for_each(|p| *p = 0);
             }
+            /* Clear address match interrupt flag */
+            ctx.resources.i2c.icr.write(|w| w.addrcf().set_bit());
         }
 
-        ctx.resources.i2c.icr.write(|w| w.addrcf().set_bit());
-
-        /* Handle Stop */
-        if isr_reader.stopf().is_stop() {
-            rprintln!("Stop event");
-            if ctx.resources.transmission_state.received_count >= 2 {
-                ctx.resources.transmission_state.receive_buffer[0] =
-                    ctx.resources.transmission_state.received_count;
-                ctx.resources.transmission_state.received_count = 1;
-                ctx.resources.transmission_state.data_ready = true;
-
-                execute_smbus_command(ctx.resources.transmission_state, ctx.resources.data);
-
-                ctx.resources.i2c.icr.write(|w| w.stopcf().set_bit());
+        if isr_reader.txis().bit_is_set() {
+            match ctx.resources.transmission_state.current_command {
+                SMBCommand::RBDCommand => {
+                    // RBD
+                    ctx.resources.transmission_state.send_data = 0x31;
+                }
+                SMBCommand::RBKCommand => {
+                    // RBK
+                    match ctx.resources.transmission_state.param_idx {
+                        0 => {
+                            ctx.resources.transmission_state.send_data = 0x7;
+                        }
+                        1 => {
+                            ctx.resources.transmission_state.send_data = 0x0;
+                        }
+                        2 => {
+                            ctx.resources.transmission_state.send_data = 0x1;
+                        }
+                        3 => {
+                            ctx.resources.transmission_state.send_data = 0x2;
+                        }
+                        4 => {
+                            ctx.resources.transmission_state.send_data = 0x3;
+                        }
+                        5 => {
+                            ctx.resources.transmission_state.send_data = 0x4;
+                        }
+                        6 => {
+                            ctx.resources.transmission_state.send_data = 0x5;
+                        }
+                        7 => {
+                            ctx.resources.transmission_state.send_data = 0x6;
+                        }
+                        _ => unreachable!("Protocol error"),
+                    }
+                    ctx.resources.transmission_state.param_idx += 1;
+                }
+                SMBCommand::RWDCommand => {
+                    // RWD
+                    if ctx.resources.transmission_state.param_idx == 0 {
+                        ctx.resources.transmission_state.send_data = 0xaf;
+                    } else if ctx.resources.transmission_state.param_idx == 1 {
+                        ctx.resources.transmission_state.send_data = 0xdb;
+                    }
+                    ctx.resources.transmission_state.param_idx += 1;
+                }
+                _ => {}
             }
-            unsafe {
-                ctx.resources.i2c.icr.write(|w| w.bits(0xFF));
-            }
-        }
-
-        /* Handle TX buffer empty */
-        if isr_reader.txe().is_empty() {
-            rprintln!("TX buffer empty");
-            ctx.resources.i2c.txdr.write(|w| {
-                w.txdata().bits(
-                    ctx.resources.transmission_state.transmit_buffer
-                        [ctx.resources.transmission_state.transmitted_count as usize],
-                )
-            });
-            if ctx.resources.transmission_state.transmitted_count
-                < ctx.resources.transmission_state.bytes_to_transmit
-            {
-                ctx.resources.transmission_state.transmitted_count += 1;
-            }
+            /* Set the transmit register */
+            // does this also clear the interrupt flag?
+            ctx.resources
+                .i2c
+                .txdr
+                .write(|w| w.txdata().bits(ctx.resources.transmission_state.send_data));
         }
 
         /* Handle receive buffer not empty */
         if isr_reader.rxne().is_not_empty() {
-            ctx.resources.transmission_state.receive_buffer
-                [ctx.resources.transmission_state.received_count as usize] =
-                data_reader.rxdata().bits();
-            ctx.resources.transmission_state.received_count += 1;
-            if ctx.resources.transmission_state.received_count >= TRANSMISSION_SIZE as u8 - 1 {
-                rprintln!("Buffer full!");
-                ctx.resources.transmission_state.received_count = TRANSMISSION_SIZE as u8 - 1;
+            let data = data_reader.rxdata().bits();
+            if ctx.resources.transmission_state.current_command == SMBCommand::NoCommand {
+                ctx.resources.transmission_state.current_command = data.into();
+                match ctx.resources.transmission_state.current_command {
+                    SMBCommand::SBCommand => {
+                        // SB
+                    }
+                    _ => unimplemented!("Protocol error"),
+                }
+            } else {
+                match ctx.resources.transmission_state.current_command {
+                    SMBCommand::WBKCommand => {
+                        // WBK
+                        match ctx.resources.transmission_state.param_idx {
+                            0 => { /* block length */ }
+                            1 => {
+                                rprintln!("{}", data);
+                            }
+                            2 => {
+                                rprintln!("{}", data);
+                            }
+                            3 => {
+                                rprintln!("{}", data);
+                            }
+                            _ => {}
+                        }
+                        ctx.resources.transmission_state.param_idx += 1;
+                    }
+                    SMBCommand::WBDCommand => {
+                        // WBD
+                        rprintln!("{}", data);
+                        ctx.resources.transmission_state.param_idx += 1;
+                    }
+                    _ => unimplemented!("Protocol error"),
+                }
             }
         }
+
+        /* Handle Stop */
+        if isr_reader.stopf().is_stop() {
+            ctx.resources.transmission_state.current_command = SMBCommand::NoCommand;
+            ctx.resources.transmission_state.param_idx = 0;
+
+            ctx.resources.i2c.icr.write(|w| w.stopcf().set_bit());
+        }
+
         /* Read error flags */
         // isr_reader error flags
     }
@@ -281,67 +324,3 @@ const APP: () = {
         }
     }
 };
-
-fn execute_smbus_command(state: &mut SMBusState, data: &mut ExampleState) {
-    rprintln!("{:x?}", state.receive_buffer);
-
-    match state.dir {
-        SMBusDirection::MasterToSlave => match state.receive_buffer[0] {
-            2 => {
-                data.rec_byte_data = state.receive_buffer[1];
-            }
-            3 => match state.receive_buffer[1] {
-                0x1f => {
-                    data.rec_byte_data = state.receive_buffer[2];
-                }
-                _ => {
-                    rprintln!(
-                        "Unsupported command: {:x}. Number of bytes: {:x}",
-                        state.receive_buffer[1],
-                        state.receive_buffer[0]
-                    );
-                }
-            },
-            4 => match state.receive_buffer[1] {
-                0xaf => {
-                    let word: u16 =
-                        state.receive_buffer[2] as u16 | (state.receive_buffer[3] as u16) << 8;
-                    data.rec_word_data = word;
-                }
-                _ => {
-                    rprintln!(
-                        "Unsupported command: {:x}. Number of bytes: {:x}",
-                        state.receive_buffer[1],
-                        state.receive_buffer[0]
-                    );
-                }
-            },
-            5..=32 => match state.receive_buffer[1] {
-                0xdd => {
-                    // parse block
-                }
-                _ => {
-                    rprintln!(
-                        "Unsupported command: {:x}. Number of bytes: {:x}",
-                        state.receive_buffer[1],
-                        state.receive_buffer[0]
-                    );
-                }
-            },
-            _ => {
-                unreachable!("Block transfers larger than 32 bytes are not supported!");
-            }
-        },
-        SMBusDirection::SlaveToMaster => match state.receive_buffer[0] {
-            2 => match state.receive_buffer[1] {
-                0xab => {
-                    state.transmit_buffer[0] = 0xab;
-                    state.transmit_buffer[1] = 0xcd;
-                    state.bytes_to_transmit = 2;
-                }
-                _ => rprintln!("TODO"),
-            },
-            _ => rprintln!("TODO"),
-        },
-    }
-}
