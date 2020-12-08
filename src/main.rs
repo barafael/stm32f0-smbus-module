@@ -195,6 +195,7 @@ const APP: () = {
 
         /* Handle Address match */
         if isr_reader.addr().is_match_() {
+            rprintln!("Address match");
             if ctx.resources.i2c.isr.read().dir().is_read() {
                 /* Set TXE in ISR (not exposed by svd, so unsafe) */
                 ctx.resources
@@ -207,10 +208,11 @@ const APP: () = {
         }
 
         if isr_reader.txis().bit_is_set() {
+            rprintln!("txis");
             match ctx.resources.transmission_state.current_command {
                 SMBCommand::RBDCommand => {
                     // RBD
-                    ctx.resources.transmission_state.send_data = 0x31;
+                    ctx.resources.transmission_state.send_data = 0xde;
                 }
                 SMBCommand::RBKCommand => {
                     // RBK
@@ -252,7 +254,7 @@ const APP: () = {
                     }
                     ctx.resources.transmission_state.param_idx += 1;
                 }
-                _ => {}
+                _ => unreachable!("Protocol error"),
             }
             /* Set the transmit register */
             // does this also clear the interrupt flag?
@@ -265,14 +267,13 @@ const APP: () = {
         /* Handle receive buffer not empty */
         if isr_reader.rxne().is_not_empty() {
             let data = data_reader.rxdata().bits();
+            rprintln!("rxne {}", data);
             if ctx.resources.transmission_state.current_command == SMBCommand::NoCommand {
-                let command = data.try_into().unwrap();
+                let command = data.try_into().unwrap_or_default();
+                rprintln!("{:?}", command);
                 ctx.resources.transmission_state.current_command = command;
-                match ctx.resources.transmission_state.current_command {
-                    SMBCommand::SBCommand => {
+                if ctx.resources.transmission_state.current_command == SMBCommand::SBCommand {
                         // SB
-                    }
-                    _ => unimplemented!("Protocol error"),
                 }
             } else {
                 match ctx.resources.transmission_state.current_command {
@@ -305,6 +306,7 @@ const APP: () = {
 
         /* Handle Stop */
         if isr_reader.stopf().is_stop() {
+            rprintln!("stop");
             ctx.resources.transmission_state.current_command = SMBCommand::NoCommand;
             ctx.resources.transmission_state.param_idx = 0;
 
