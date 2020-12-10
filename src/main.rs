@@ -5,7 +5,7 @@
 
 use panic_halt as _;
 
-use core::convert::TryInto;
+use num_enum::TryFromPrimitive;
 
 use rtic::app;
 
@@ -24,7 +24,7 @@ use stm32f0xx_hal::{
     prelude::*,
 };
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, TryFromPrimitive)]
 #[repr(u8)]
 enum SMBCommand {
     NoCommand = 0x00,
@@ -39,23 +39,6 @@ enum SMBCommand {
 impl Default for SMBCommand {
     fn default() -> Self {
         Self::NoCommand
-    }
-}
-
-impl core::convert::TryFrom<u8> for SMBCommand {
-    type Error = ();
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value {
-            0x00 => Ok(Self::NoCommand),
-            0x01 => Ok(Self::RWDCommand),
-            0x02 => Ok(Self::WBKCommand),
-            0x03 => Ok(Self::WBDCommand),
-            0x04 => Ok(Self::SBCommand),
-            0x05 => Ok(Self::RBKCommand),
-            0x06 => Ok(Self::RBDCommand),
-            _ => Err(()),
-        }
     }
 }
 
@@ -269,7 +252,7 @@ const APP: () = {
             let data = data_reader.rxdata().bits();
             rprintln!("rxne {}", data);
             if ctx.resources.transmission_state.current_command == SMBCommand::NoCommand {
-                let command = data.try_into().unwrap_or_default();
+                let command = SMBCommand::try_from(data).unwrap_or_default();
                 rprintln!("{:?}", command);
                 ctx.resources.transmission_state.current_command = command;
                 if ctx.resources.transmission_state.current_command == SMBCommand::SBCommand {
