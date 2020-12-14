@@ -1,11 +1,7 @@
-//#![deny(unsafe_code)]
-//#![deny(warnings)]
 #![no_std]
 #![no_main]
 
 use panic_halt as _;
-
-use num_enum::TryFromPrimitive;
 
 use rtic::app;
 
@@ -24,33 +20,7 @@ use stm32f0xx_hal::{
     prelude::*,
 };
 
-#[derive(Debug, Eq, PartialEq, TryFromPrimitive)]
-#[repr(u8)]
-enum SMBCommand {
-    NoCommand = 0x00,
-    RWDCommand = 0x01,
-    WBKCommand = 0x02,
-    WBDCommand = 0x03,
-    SBCommand = 0x04,
-    RBKCommand = 0x05,
-    RBDCommand = 0x06,
-}
-
-impl Default for SMBCommand {
-    fn default() -> Self {
-        Self::NoCommand
-    }
-}
-
-use core::convert::TryFrom;
 use cortex_m::interrupt::free as disable_interrupts;
-
-#[derive(Default, Debug)]
-pub struct SMBusState {
-    send_data: u8,
-    param_idx: u8,
-    current_command: SMBCommand,
-}
 
 #[app(device = stm32f0xx_hal::pac, peripherals = true)]
 const APP: () = {
@@ -59,15 +29,12 @@ const APP: () = {
         user_button: PC13<Input<Floating>>,
         led: PA5<Output<PushPull>>,
         i2c: pac::I2C1,
-        transmission_state: SMBusState,
     }
 
     #[init]
     fn init(ctx: init::Context) -> init::LateResources {
-        // RTT handler
         rtt_init_print!();
 
-        // Alias peripherals
         let mut dp: pac::Peripherals = ctx.device;
 
         dp.RCC.apb2enr.modify(|_, w| w.syscfgen().set_bit());
@@ -148,17 +115,11 @@ const APP: () = {
             dp.I2C1.cr2.modify(|_, w| w.nbytes().bits(0x1));
         }
 
-        let smbus_state = SMBusState::default();
-
-        //dp.I2C1.rxdr.read().rxdata().bits();
-        //dp.I2C1.cr2.modify(|_, w| w.nbytes().bits(ctx.resources.transmission_state.bytes_to_transmit));
-        //I2c<I2C1, PB8<Alternate<AF1>>, PB9<Alternate<AF1>>>,
         init::LateResources {
             exti,
             user_button,
             led,
             i2c: dp.I2C1,
-            transmission_state: smbus_state,
         }
     }
 
@@ -171,12 +132,11 @@ const APP: () = {
         }
     }
 
-    #[task(binds = I2C1, resources = [i2c, user_button, led, transmission_state], priority = 1)]
+    #[task(binds = I2C1, resources = [i2c, user_button, led], priority = 1)]
     fn i2c1_interrupt(ctx: i2c1_interrupt::Context) {
         let isr_reader = ctx.resources.i2c.isr.read();
         let data_reader = ctx.resources.i2c.rxdr.read();
 
-        /* Handle Address match */
         if isr_reader.addr().is_match_() {
             rprintln!("Address match");
             if ctx.resources.i2c.isr.read().dir().is_read() {
@@ -192,107 +152,23 @@ const APP: () = {
 
         if isr_reader.txis().bit_is_set() {
             rprintln!("txis");
-            match ctx.resources.transmission_state.current_command {
-                SMBCommand::RBDCommand => {
-                    // RBD
-                    ctx.resources.transmission_state.send_data = 0xde;
-                }
-                SMBCommand::RBKCommand => {
-                    // RBK
-                    match ctx.resources.transmission_state.param_idx {
-                        0 => {
-                            ctx.resources.transmission_state.send_data = 0x7;
-                        }
-                        1 => {
-                            ctx.resources.transmission_state.send_data = 0x0;
-                        }
-                        2 => {
-                            ctx.resources.transmission_state.send_data = 0x1;
-                        }
-                        3 => {
-                            ctx.resources.transmission_state.send_data = 0x2;
-                        }
-                        4 => {
-                            ctx.resources.transmission_state.send_data = 0x3;
-                        }
-                        5 => {
-                            ctx.resources.transmission_state.send_data = 0x4;
-                        }
-                        6 => {
-                            ctx.resources.transmission_state.send_data = 0x5;
-                        }
-                        7 => {
-                            ctx.resources.transmission_state.send_data = 0x6;
-                        }
-                        _ => unreachable!("Protocol error"),
-                    }
-                    ctx.resources.transmission_state.param_idx += 1;
-                }
-                SMBCommand::RWDCommand => {
-                    // RWD
-                    if ctx.resources.transmission_state.param_idx == 0 {
-                        ctx.resources.transmission_state.send_data = 0xaf;
-                    } else if ctx.resources.transmission_state.param_idx == 1 {
-                        ctx.resources.transmission_state.send_data = 0xdb;
-                    }
-                    ctx.resources.transmission_state.param_idx += 1;
-                }
-                _ => unreachable!("Protocol error"),
-            }
             /* Set the transmit register */
             // does this also clear the interrupt flag?
             ctx.resources
                 .i2c
                 .txdr
-                .write(|w| w.txdata().bits(ctx.resources.transmission_state.send_data));
+                .write(|w| w.txdata().bits(0x42));
         }
 
         /* Handle receive buffer not empty */
         if isr_reader.rxne().is_not_empty() {
             let data = data_reader.rxdata().bits();
             rprintln!("rxne {}", data);
-            if ctx.resources.transmission_state.current_command == SMBCommand::NoCommand {
-                let command = SMBCommand::try_from(data).unwrap_or_default();
-                rprintln!("{:?}", command);
-                ctx.resources.transmission_state.current_command = command;
-                if ctx.resources.transmission_state.current_command == SMBCommand::SBCommand {
-                        // SB
-                }
-            } else {
-                match ctx.resources.transmission_state.current_command {
-                    SMBCommand::WBKCommand => {
-                        // WBK
-                        match ctx.resources.transmission_state.param_idx {
-                            0 => { /* block length */ }
-                            1 => {
-                                rprintln!("{}", data);
-                            }
-                            2 => {
-                                rprintln!("{}", data);
-                            }
-                            3 => {
-                                rprintln!("{}", data);
-                            }
-                            _ => {}
-                        }
-                        ctx.resources.transmission_state.param_idx += 1;
-                    }
-                    SMBCommand::WBDCommand => {
-                        // WBD
-                        rprintln!("{}", data);
-                        ctx.resources.transmission_state.param_idx += 1;
-                    }
-                    _ => unimplemented!("Protocol error"),
-                }
-            }
         }
 
         /* Handle Stop */
         if isr_reader.stopf().is_stop() {
             rprintln!("stop");
-            ctx.resources.transmission_state.current_command = SMBCommand::NoCommand;
-            ctx.resources.transmission_state.param_idx = 0;
-
             ctx.resources.i2c.icr.write(|w| w.stopcf().set_bit());
         }
 
