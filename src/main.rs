@@ -22,6 +22,8 @@ use stm32f0xx_hal::{
 
 use cortex_m::interrupt::free as disable_interrupts;
 
+use smbus_slave_state_machine::*;
+
 #[app(device = stm32f0xx_hal::pac, peripherals = true)]
 const APP: () = {
     struct Resources {
@@ -29,6 +31,8 @@ const APP: () = {
         user_button: PC13<Input<Floating>>,
         led: PA5<Output<PushPull>>,
         i2c: pac::I2C1,
+        state: State,
+        bus_state: SMBusState,
     }
 
     #[init]
@@ -115,11 +119,16 @@ const APP: () = {
             dp.I2C1.cr2.modify(|_, w| w.nbytes().bits(0x1));
         }
 
+        let state = State::default();
+        let bus_state = SMBusState::default();
+
         init::LateResources {
             exti,
             user_button,
             led,
             i2c: dp.I2C1,
+            state,
+            bus_state,
         }
     }
 
@@ -132,44 +141,89 @@ const APP: () = {
         }
     }
 
-    #[task(binds = I2C1, resources = [i2c, user_button, led], priority = 1)]
+    #[task(binds = I2C1, resources = [i2c, user_button, led, state, bus_state], priority = 1)]
     fn i2c1_interrupt(ctx: i2c1_interrupt::Context) {
         let isr_reader = ctx.resources.i2c.isr.read();
         let data_reader = ctx.resources.i2c.rxdr.read();
 
         if isr_reader.addr().is_match_() {
-            rprintln!("Address match");
             if ctx.resources.i2c.isr.read().dir().is_read() {
                 /* Set TXE in ISR (not exposed by svd, so unsafe) */
                 ctx.resources
                     .i2c
                     .isr
                     .modify(|r, w| unsafe { w.bits(r.bits() | 1) });
+                let mut address_match_event = I2CEvent::Addr {
+                    direction: Direction::SlaveToMaster,
+                };
+                if let Err(protocol_error) = ctx
+                    .resources
+                    .state
+                    .handle_i2c_event(&mut address_match_event, ctx.resources.bus_state)
+                {
+                    rprintln!("{:?}", protocol_error);
+                }
             }
             /* Clear address match interrupt flag */
+            // todo move before protocol handling
             ctx.resources.i2c.icr.write(|w| w.addrcf().set_bit());
+
+            rprintln!("address match");
+
         }
 
         if isr_reader.txis().bit_is_set() {
-            rprintln!("txis");
+            let mut byte: u8 = 0;
+            let mut txis_event = I2CEvent::RequestedByte {
+                byte: &mut byte,
+            };
+            if let Err(protocol_error) = ctx
+                .resources
+                .state
+                .handle_i2c_event(&mut txis_event, ctx.resources.bus_state)
+            {
+                rprintln!("{:?}", protocol_error);
+            }
+
             /* Set the transmit register */
             // does this also clear the interrupt flag?
-            ctx.resources
-                .i2c
-                .txdr
-                .write(|w| w.txdata().bits(0x42));
+            ctx.resources.i2c.txdr.write(|w| w.txdata().bits(byte));
+
+            rprintln!("txis {}", byte);
         }
 
         /* Handle receive buffer not empty */
         if isr_reader.rxne().is_not_empty() {
             let data = data_reader.rxdata().bits();
+
             rprintln!("rxne {}", data);
+
+            let mut rxne_event = I2CEvent::ReceivedByte {
+                byte: data,
+            };
+            if let Err(protocol_error) = ctx
+                .resources
+                .state
+                .handle_i2c_event(&mut rxne_event, ctx.resources.bus_state)
+            {
+                rprintln!("{:?}", protocol_error);
+            }
         }
 
         /* Handle Stop */
         if isr_reader.stopf().is_stop() {
-            rprintln!("stop");
             ctx.resources.i2c.icr.write(|w| w.stopcf().set_bit());
+
+            rprintln!("stop");
+
+            let mut stop_event = I2CEvent::Stop{};
+            if let Err(protocol_error) = ctx
+                .resources
+                .state
+                .handle_i2c_event(&mut stop_event, ctx.resources.bus_state)
+            {
+                rprintln!("{:?}", protocol_error);
+            }
         }
 
         /* Read error flags */

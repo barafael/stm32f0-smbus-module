@@ -400,7 +400,7 @@ dependencies = [
 [[package]]
 name = "smbus-slave-state-machine"
 version = "0.1.0"
-source = "git+https://github.com/barafael/smbus-slave-state-machine?branch=main#8bb47883eae91027423de500805c6980398b6fe6"
+source = "git+https://github.com/barafael/smbus-slave-state-machine?branch=main#1ad4a740773342d4e41b2c0bd187e38e9f6a1283"
 dependencies = [
  "num_enum",
 ]
