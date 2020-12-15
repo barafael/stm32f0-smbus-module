@@ -33,6 +33,7 @@ const APP: () = {
         i2c: pac::I2C1,
         state: State,
         bus_state: SMBusState,
+        counter: u8,
     }
 
     #[init]
@@ -107,7 +108,7 @@ const APP: () = {
             //dp.I2C1.cr2.modify(|_, w| w.nack().set_bit());
             dp.I2C1.cr1.modify(|_, w| w.pecen().set_bit());
             dp.I2C1.oar1.modify(|_, w| w.oa1en().set_bit());
-            dp.I2C1.cr1.modify(|_, w| w.sbc().set_bit());
+            //dp.I2C1.cr1.modify(|_, w| w.sbc().set_bit());
 
             dp.I2C1.cr1.modify(|_, w| w.txie().set_bit());
             dp.I2C1.cr1.modify(|_, w| w.rxie().set_bit());
@@ -129,6 +130,7 @@ const APP: () = {
             i2c: dp.I2C1,
             state,
             bus_state,
+            counter: 0,
         }
     }
 
@@ -141,13 +143,13 @@ const APP: () = {
         }
     }
 
-    #[task(binds = I2C1, resources = [i2c, user_button, led, state, bus_state], priority = 1)]
+    #[task(binds = I2C1, resources = [i2c, user_button, led, state, bus_state, counter], priority = 1)]
     fn i2c1_interrupt(ctx: i2c1_interrupt::Context) {
         let isr_reader = ctx.resources.i2c.isr.read();
-        let data_reader = ctx.resources.i2c.rxdr.read();
 
         if isr_reader.addr().is_match_() {
-            if ctx.resources.i2c.isr.read().dir().is_read() {
+            if isr_reader.dir().is_read() {
+                rprintln!("address match read");
                 /* Set TXE in ISR (not exposed by svd, so unsafe) */
                 ctx.resources
                     .i2c
@@ -163,16 +165,16 @@ const APP: () = {
                 {
                     rprintln!("{:?}", protocol_error);
                 }
+            } else {
+                rprintln!("address match write");
             }
             /* Clear address match interrupt flag */
             // todo move before protocol handling
             ctx.resources.i2c.icr.write(|w| w.addrcf().set_bit());
-
-            rprintln!("address match");
-
         }
 
         if isr_reader.txis().bit_is_set() {
+        //if isr_reader.txis().is_empty() {
             let mut byte: u8 = 0;
             let mut txis_event = I2CEvent::RequestedByte {
                 byte: &mut byte,
@@ -187,16 +189,18 @@ const APP: () = {
 
             /* Set the transmit register */
             // does this also clear the interrupt flag?
-            ctx.resources.i2c.txdr.write(|w| w.txdata().bits(byte));
-
+            ctx.resources
+                .i2c
+                .txdr
+                .write(|w| w.txdata().bits(byte));
+            *ctx.resources.counter += 1;
             rprintln!("txis {}", byte);
         }
 
         /* Handle receive buffer not empty */
         if isr_reader.rxne().is_not_empty() {
-            let data = data_reader.rxdata().bits();
-
-            rprintln!("rxne {}", data);
+            let data = ctx.resources.i2c.rxdr.read().rxdata().bits();
+            rprintln!("rxne 0x{:x}", data);
 
             let mut rxne_event = I2CEvent::ReceivedByte {
                 byte: data,
@@ -226,8 +230,7 @@ const APP: () = {
             }
         }
 
-        /* Read error flags */
-        // isr_reader error flags
+        /* TODO Read error flags */
     }
 
     #[task(binds = EXTI4_15, resources = [exti, user_button, led])]
