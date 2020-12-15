@@ -90,7 +90,7 @@ const APP: () = {
         unsafe {
             dp.I2C1.icr.reset();
 
-            dp.I2C1.timingr.write(|w| w.bits(0x00200000));
+            dp.I2C1.timingr.write(|w| w.bits(0x0000020B));
             dp.I2C1.cr2.modify(|_, w| w.autoend().set_bit());
             dp.I2C1.oar1.modify(|_, w| w.oa1en().clear_bit());
             dp.I2C1.oar2.modify(|_, w| w.oa2en().clear_bit());
