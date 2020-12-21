@@ -119,7 +119,7 @@ dependencies = [
 [[package]]
 name = "defmt"
 version = "0.1.3"
-source = "git+https://github.com/knurling-rs/defmt?branch=main#dd056e6b7ea807e43f851c75b6fa24bfd7cf9f5a"
+source = "git+https://github.com/knurling-rs/defmt?branch=main#c4461eb148461e54d9a1e203cf01393f07ce84f0"
 dependencies = [
  "defmt-macros",
  "heapless",
@@ -129,7 +129,7 @@ dependencies = [
 [[package]]
 name = "defmt-macros"
 version = "0.1.1"
-source = "git+https://github.com/knurling-rs/defmt?branch=main#dd056e6b7ea807e43f851c75b6fa24bfd7cf9f5a"
+source = "git+https://github.com/knurling-rs/defmt?branch=main#c4461eb148461e54d9a1e203cf01393f07ce84f0"
 dependencies = [
  "defmt-parser",
  "proc-macro2",
@@ -140,7 +140,7 @@ dependencies = [
 [[package]]
 name = "defmt-parser"
 version = "0.1.0"
-source = "git+https://github.com/knurling-rs/defmt?branch=main#dd056e6b7ea807e43f851c75b6fa24bfd7cf9f5a"
+source = "git+https://github.com/knurling-rs/defmt?branch=main#c4461eb148461e54d9a1e203cf01393f07ce84f0"
 
 [[package]]
 name = "derivative"
@@ -300,9 +300,9 @@ dependencies = [
 
 [[package]]
 name = "quote"
-version = "1.0.7"
+version = "1.0.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa563d17ecb180e500da1cfd2b028310ac758de548efdd203e18f283af693f37"
+checksum = "991431c3519a3f36861882da93630ce66b52918dcf1b8e2fd66b397fc96f28df"
 dependencies = [
  "proc-macro2",
 ]
@@ -400,7 +400,7 @@ dependencies = [
 [[package]]
 name = "smbus-slave-state-machine"
 version = "0.1.0"
-source = "git+https://github.com/barafael/smbus-slave-state-machine?branch=main#85fd45dad2bc19f2158399311fb26cc731d713aa"
+source = "git+https://github.com/barafael/smbus-slave-state-machine?branch=main#82d950025ff13d3bd806a946cff27f57ab083333"
 dependencies = [
  "num_enum",
 ]
@@ -440,9 +440,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "1.0.54"
+version = "1.0.55"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a2af957a63d6bd42255c359c93d9bfdb97076bd3b820897ce55ffbfbf107f44"
+checksum = "a571a711dddd09019ccc628e1b17fe87c59b09d513c06c026877aa708334f37a"
 dependencies = [
  "proc-macro2",
  "quote",
