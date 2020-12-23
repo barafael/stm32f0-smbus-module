@@ -96,7 +96,7 @@ const APP: () = {
             dp.I2C1.cr2.modify(|_, w| w.autoend().set_bit());
             dp.I2C1.oar1.modify(|_, w| w.oa1en().clear_bit());
             dp.I2C1.oar2.modify(|_, w| w.oa2en().clear_bit());
-            dp.I2C1.cr1.modify(|_, w| w.gcen().set_bit());
+            dp.I2C1.cr1.modify(|_, w| w.gcen().clear_bit());
             dp.I2C1.cr1.modify(|_, w| w.nostretch().clear_bit());
             dp.I2C1.cr1.modify(|_, w| w.pe().clear_bit());
             dp.I2C1
@@ -108,9 +108,9 @@ const APP: () = {
                 .cr1
                 .modify(|r, w| w.bits(r.bits() | I2C_MODE_SMBUS_AUTOEND_WITH_PEC));
             //dp.I2C1.cr2.modify(|_, w| w.nack().set_bit());
-            dp.I2C1.cr1.modify(|_, w| w.pecen().set_bit());
+            //dp.I2C1.cr1.modify(|_, w| w.pecen().set_bit());
             dp.I2C1.oar1.modify(|_, w| w.oa1en().set_bit());
-            //dp.I2C1.cr1.modify(|_, w| w.sbc().set_bit());
+            dp.I2C1.cr1.modify(|_, w| w.sbc().clear_bit());
 
             dp.I2C1.cr1.modify(|_, w| w.txie().set_bit());
             dp.I2C1.cr1.modify(|_, w| w.rxie().set_bit());
@@ -149,16 +149,19 @@ const APP: () = {
         let isr_reader = ctx.resources.i2c.isr.read();
 
         if isr_reader.addr().is_match_() {
+            /* Clear address match interrupt flag */
+            ctx.resources.i2c.icr.write(|w| w.addrcf().set_bit());
             if isr_reader.dir().is_read() {
                 /* Set TXE in ISR (not exposed by svd, so unsafe) */
                 ctx.resources
                     .i2c
                     .isr
                     .modify(|r, w| unsafe { w.bits(r.bits() | 1) });
+
+                ctx.resources.i2c.cr1.modify(|_, w| w.txie().set_bit());
                 let mut address_match_event = I2CEvent::Initiated {
                     direction: Direction::SlaveToMaster,
                 };
-                /*
                 if let Err(protocol_error) = ctx
                     .resources
                     .handler
@@ -166,25 +169,19 @@ const APP: () = {
                 {
                     rprintln!("{:?}", protocol_error);
                 }
-                */
                 rprintln!("{:?}", address_match_event);
             } else {
                 let address_match_event = I2CEvent::Initiated {
                     direction: Direction::MasterToSlave };
                 rprintln!("{:?}", address_match_event);
             }
-            /* Clear address match interrupt flag */
-            // todo move before protocol handling
-            ctx.resources.i2c.icr.write(|w| w.addrcf().set_bit());
-        }
-
-        if isr_reader.txis().bit_is_set() {
-        //if isr_reader.txis().is_empty() {
+        } else if isr_reader.txis().is_empty() {
+            ctx.resources.i2c.cr1.modify(|_, w| w.txie().clear_bit());
             let mut byte: u8 = 0;
             let mut txis_event = I2CEvent::RequestedByte {
                 byte: &mut byte,
             };
-            /*
+
             if let Err(protocol_error) = ctx
                 .resources
                 .handler
@@ -192,7 +189,6 @@ const APP: () = {
             {
                 rprintln!("{:?}", protocol_error);
             }
-            */
             rprintln!("{:?}", txis_event);
 
             /* Set the transmit register */
@@ -201,6 +197,7 @@ const APP: () = {
                 .i2c
                 .txdr
                 .write(|w| w.txdata().bits(byte));
+
         }
 
         /* Handle receive buffer not empty */
@@ -212,7 +209,6 @@ const APP: () = {
             };
             rprintln!("{:x?}", rxne_event);
 
-            /*
             if let Err(protocol_error) = ctx
                 .resources
                 .handler
@@ -220,8 +216,8 @@ const APP: () = {
             {
                 rprintln!("{:?}", protocol_error);
             }
-            */
         }
+
 
         /* Handle Stop */
         if isr_reader.stopf().is_stop() {
@@ -230,7 +226,6 @@ const APP: () = {
             let mut stop_event = I2CEvent::Stopped;
             rprintln!("{:?}", stop_event);
 
-            /*
             if let Err(protocol_error) = ctx
                 .resources
                 .handler
@@ -238,7 +233,6 @@ const APP: () = {
             {
                 rprintln!("{:?}", protocol_error);
             }
-            */
         }
 
         /* TODO Read error flags */

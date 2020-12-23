@@ -1,8 +1,8 @@
 use smbus_slave_state_machine::*;
 
-use rtt_target::{rprintln, rtt_init_print};
+use rtt_target::rprintln;
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Data {
     byte_a: u8,
     byte_b: u8,
