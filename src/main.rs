@@ -197,7 +197,6 @@ const APP: () = {
                 .i2c
                 .txdr
                 .write(|w| w.txdata().bits(byte));
-
         }
 
         /* Handle receive buffer not empty */
@@ -217,7 +216,6 @@ const APP: () = {
                 rprintln!("{:?}", protocol_error);
             }
         }
-
 
         /* Handle Stop */
         if isr_reader.stopf().is_stop() {

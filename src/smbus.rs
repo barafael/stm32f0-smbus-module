@@ -85,7 +85,7 @@ impl CommandHandler for Data {
         }
     }
 
-    fn handle_write_block_data(&mut self, reg: u8, count: u8, block: [u8; 32]) -> Result<(), ()> {
+    fn handle_write_block_data(&mut self, reg: u8, count: u8, block: &[u8]) -> Result<(), ()> {
         unimplemented!()
     }
 }

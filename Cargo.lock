@@ -400,7 +400,7 @@ dependencies = [
 [[package]]
 name = "smbus-slave-state-machine"
 version = "0.1.0"
-source = "git+https://github.com/barafael/smbus-slave-state-machine?branch=main#82d950025ff13d3bd806a946cff27f57ab083333"
+source = "git+https://github.com/barafael/smbus-slave-state-machine?branch=main#625c925d55a4f094a05972f4644151672d8b1467"
 dependencies = [
  "num_enum",
 ]
@@ -440,9 +440,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "1.0.55"
+version = "1.0.56"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a571a711dddd09019ccc628e1b17fe87c59b09d513c06c026877aa708334f37a"
+checksum = "a9802ddde94170d186eeee5005b798d9c159fa970403f1be19976d0cfb939b72"
 dependencies = [
  "proc-macro2",
  "quote",
