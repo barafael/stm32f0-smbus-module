@@ -1,6 +1,6 @@
 [package]
-name = "rtic-smbus-slave"
-version = "0.1.0"
+name = "stm32f0-smbus-module"
+version = "0.2.0"
 authors = ["Rafael Bachmann <rafael.bachmann.93@gmail.com>"]
 edition = "2018"
 

@@ -1,7 +1,5 @@
 use smbus_slave_state_machine::*;
 
-use rtt_target::rprintln;
-
 #[derive(Default, Debug)]
 pub struct Data {
     byte_a: u8,
@@ -38,12 +36,10 @@ impl CommandHandler for Data {
     }
 
     fn handle_read_block_data(&self, reg: u8, index: u8) -> Option<u8> {
-        rprintln!("rbk {}", reg);
         None
     }
 
     fn handle_write_byte(&mut self, data: u8) -> Result<(), ()> {
-        rprintln!("writing byte {}", data);
         self.byte_a = data;
         Ok(())
     }
@@ -87,7 +83,6 @@ impl CommandHandler for Data {
     }
 
     fn handle_write_block_data(&mut self, reg: u8, count: u8, block: &[u8]) -> Result<(), ()> {
-        rprintln!("wbk {}", reg);
         Err(())
     }
 }
