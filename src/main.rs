@@ -171,16 +171,22 @@ const APP: () = {
                 }
                 rprintln!("{:?}", address_match_event);
             } else {
-                let address_match_event = I2CEvent::Initiated {
-                    direction: Direction::MasterToSlave };
+                let mut address_match_event = I2CEvent::Initiated {
+                    direction: Direction::MasterToSlave,
+                };
+                if let Err(protocol_error) = ctx
+                    .resources
+                    .handler
+                    .handle_i2c_event(&mut address_match_event, ctx.resources.bus_state)
+                {
+                    rprintln!("{:?}", protocol_error);
+                }
                 rprintln!("{:?}", address_match_event);
             }
         } else if isr_reader.txis().is_empty() {
             ctx.resources.i2c.cr1.modify(|_, w| w.txie().clear_bit());
             let mut byte: u8 = 0;
-            let mut txis_event = I2CEvent::RequestedByte {
-                byte: &mut byte,
-            };
+            let mut txis_event = I2CEvent::RequestedByte { byte: &mut byte };
 
             if let Err(protocol_error) = ctx
                 .resources
@@ -193,19 +199,14 @@ const APP: () = {
 
             /* Set the transmit register */
             // does this also clear the interrupt flag?
-            ctx.resources
-                .i2c
-                .txdr
-                .write(|w| w.txdata().bits(byte));
+            ctx.resources.i2c.txdr.write(|w| w.txdata().bits(byte));
         }
 
         /* Handle receive buffer not empty */
         if isr_reader.rxne().is_not_empty() {
             let data = ctx.resources.i2c.rxdr.read().rxdata().bits();
 
-            let mut rxne_event = I2CEvent::ReceivedByte {
-                byte: data,
-            };
+            let mut rxne_event = I2CEvent::ReceivedByte { byte: data };
             rprintln!("{:x?}", rxne_event);
 
             if let Err(protocol_error) = ctx
