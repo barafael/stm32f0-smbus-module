@@ -2,6 +2,10 @@
 name = "stm32f0-smbus-module"
 version = "0.2.0"
 authors = ["Rafael Bachmann <rafael.bachmann.93@gmail.com>"]
+description = "This firmware for stm32f0 implements an SMBus module to test smbus-request-parser library. RTIC is used to manage the interrupts. The I2C1 peripheral is used, with SCL, SDA mapped to PB8, PB9."
+readme = "README.md"
+license = "MIT License"
+repository = "https://github.com/barafael/stm32f0-smbus-module"
 edition = "2018"
 
 [dependencies.defmt]
@@ -16,4 +20,4 @@ panic-rtt-target = { version = "0.1.1", features = ["cortex-m"] }
 cortex-m = "0.6.3"
 cortex-m-rtic = { version = "0.5.5" }
 stm32f0xx-hal = { version = "0.17.1", features = ["rt", "stm32f072"] }
-smbus-request-parser = { git = "https://github.com/barafael/smbus-request-parser", branch = "main" }
+smbus-request-parser = "0.1.1"
