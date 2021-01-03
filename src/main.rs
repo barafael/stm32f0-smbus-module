@@ -25,7 +25,7 @@ use stm32f0xx_hal::{
 
 use cortex_m::interrupt::free as disable_interrupts;
 
-use smbus_slave_state_machine::*;
+use smbus_request_parser::*;
 
 #[app(device = stm32f0xx_hal::pac, peripherals = true)]
 const APP: () = {

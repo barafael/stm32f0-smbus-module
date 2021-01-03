@@ -320,21 +320,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8bd58a6949de8ff797a346a28d9f13f7b8f54fa61bb5e3cb0985a4efb497a5ef"
 
 [[package]]
-name = "rtic-smbus-slave"
-version = "0.1.0"
-dependencies = [
- "cortex-m",
- "cortex-m-rtic",
- "defmt",
- "embedded-hal",
- "panic-halt",
- "panic-rtt-target",
- "rtt-target",
- "smbus-slave-state-machine",
- "stm32f0xx-hal",
-]
-
-[[package]]
 name = "rtic-syntax"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -398,9 +383,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "smbus-slave-state-machine"
+name = "smbus-request-parser"
 version = "0.1.0"
-source = "git+https://github.com/barafael/smbus-slave-state-machine?branch=main#00dc824a56bb0c9938d27ddbe0686ad11b8f4f9a"
+source = "git+https://github.com/barafael/smbus-request-parser?branch=main#0e0fc3816fc3516b757400eb5e84f9ffda257963"
 dependencies = [
  "num_enum",
 ]
@@ -421,6 +406,21 @@ dependencies = [
  "cortex-m",
  "cortex-m-rt",
  "vcell",
+]
+
+[[package]]
+name = "stm32f0-smbus-module"
+version = "0.2.0"
+dependencies = [
+ "cortex-m",
+ "cortex-m-rtic",
+ "defmt",
+ "embedded-hal",
+ "panic-halt",
+ "panic-rtt-target",
+ "rtt-target",
+ "smbus-request-parser",
+ "stm32f0xx-hal",
 ]
 
 [[package]]

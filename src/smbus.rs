@@ -1,4 +1,4 @@
-use smbus_slave_state_machine::*;
+use smbus_request_parser::*;
 
 #[derive(Default, Debug)]
 pub struct Data {
