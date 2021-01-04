@@ -7,6 +7,7 @@ pub struct Data {
     byte_b: u8,
     byte_c: u8,
 
+    count: usize,
     block: [u8; 32],
 }
 
@@ -43,15 +44,23 @@ impl CommandHandler for Data {
         match reg {
             11 => match index {
                 0 => Some(8),
-                n => Some(n),
-                //1..=8 => Some(self.block[index as usize]),
+                //n => Some(n),
+                1..=8 => Some(self.block[index as usize - 1]),
+                _ => None,
             },
             12 => match index {
                 0 => Some(16),
                 1..=16 => Some(self.block[index as usize]),
                 _ => None,
+            },
+            15 => {
+                if index == 0 {
+                    return Some(self.count as u8);
+                } else {
+                    return Some(self.block[index as usize]);
+                }
             }
-            _ => None
+            _ => None,
         }
     }
 
@@ -100,19 +109,26 @@ impl CommandHandler for Data {
 
     fn handle_write_block_data(&mut self, reg: u8, count: u8, block: &[u8]) -> Result<(), ()> {
         if count > 32 {
-            return Err(())
+            return Err(());
         }
         match reg {
             13 => {
                 if count != 20 {
-                    return Err(())
+                    return Err(());
                 }
                 for (index, value) in block.iter().take(count as usize).enumerate() {
                     self.block[index] = *value;
                 }
                 Ok(())
-            },
-            _ => Err(())
+            }
+            14 => {
+                self.count = count as usize;
+                for (index, value) in block.iter().take(count as usize).enumerate() {
+                    self.block[index] = *value;
+                }
+                Ok(())
+            }
+            _ => Err(()),
         }
     }
 }
