@@ -1,3 +1,4 @@
+use rtt_target::rprintln;
 use smbus_request_parser::*;
 
 #[derive(Default, Debug)]
@@ -5,6 +6,8 @@ pub struct Data {
     byte_a: u8,
     byte_b: u8,
     byte_c: u8,
+
+    block: [u8; 32],
 }
 
 impl CommandHandler for Data {
@@ -36,7 +39,20 @@ impl CommandHandler for Data {
     }
 
     fn handle_read_block_data(&self, reg: u8, index: u8) -> Option<u8> {
-        None
+        rprintln!("block read {}", reg);
+        match reg {
+            11 => match index {
+                0 => Some(8),
+                n => Some(n),
+                //1..=8 => Some(self.block[index as usize]),
+            },
+            12 => match index {
+                0 => Some(16),
+                1..=16 => Some(self.block[index as usize]),
+                _ => None,
+            }
+            _ => None
+        }
     }
 
     fn handle_write_byte(&mut self, data: u8) -> Result<(), ()> {
@@ -83,6 +99,20 @@ impl CommandHandler for Data {
     }
 
     fn handle_write_block_data(&mut self, reg: u8, count: u8, block: &[u8]) -> Result<(), ()> {
-        Err(())
+        if count > 32 {
+            return Err(())
+        }
+        match reg {
+            13 => {
+                if count != 20 {
+                    return Err(())
+                }
+                for (index, value) in block.iter().take(count as usize).enumerate() {
+                    self.block[index] = *value;
+                }
+                Ok(())
+            },
+            _ => Err(())
+        }
     }
 }

@@ -352,9 +352,9 @@ dependencies = [
 
 [[package]]
 name = "smbus-request-parser"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1cbd04d1a18473d38f0cb615f7f7ff966eb5d9f965dfad5f55085336fa28f61a"
+checksum = "91558054f1f4b22e51b1445e0f41a908c8ad4975533823f988d3016643bdf1b2"
 
 [[package]]
 name = "stable_deref_trait"

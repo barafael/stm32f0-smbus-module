@@ -195,7 +195,7 @@ const APP: () = {
             {
                 rprintln!("{:?}", protocol_error);
             }
-            rprintln!("{:?}", txis_event);
+            rprintln!("{:x?}", txis_event);
 
             /* Set the transmit register */
             // does this also clear the interrupt flag?
