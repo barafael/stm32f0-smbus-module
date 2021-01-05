@@ -119,7 +119,7 @@ dependencies = [
 [[package]]
 name = "defmt"
 version = "0.1.3"
-source = "git+https://github.com/knurling-rs/defmt?branch=main#c4461eb148461e54d9a1e203cf01393f07ce84f0"
+source = "git+https://github.com/knurling-rs/defmt?branch=main#41a5937d7ab0739e7a4148dba28154ac3937bb16"
 dependencies = [
  "defmt-macros",
  "heapless",
@@ -129,7 +129,7 @@ dependencies = [
 [[package]]
 name = "defmt-macros"
 version = "0.1.1"
-source = "git+https://github.com/knurling-rs/defmt?branch=main#c4461eb148461e54d9a1e203cf01393f07ce84f0"
+source = "git+https://github.com/knurling-rs/defmt?branch=main#41a5937d7ab0739e7a4148dba28154ac3937bb16"
 dependencies = [
  "defmt-parser",
  "proc-macro2",
@@ -140,7 +140,7 @@ dependencies = [
 [[package]]
 name = "defmt-parser"
 version = "0.1.0"
-source = "git+https://github.com/knurling-rs/defmt?branch=main#c4461eb148461e54d9a1e203cf01393f07ce84f0"
+source = "git+https://github.com/knurling-rs/defmt?branch=main#41a5937d7ab0739e7a4148dba28154ac3937bb16"
 
 [[package]]
 name = "embedded-hal"
@@ -352,9 +352,9 @@ dependencies = [
 
 [[package]]
 name = "smbus-request-parser"
-version = "0.1.2"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "91558054f1f4b22e51b1445e0f41a908c8ad4975533823f988d3016643bdf1b2"
+checksum = "97ee96b9ca536d778c4c16e132df67ac492d4a17d673767f13a15fd6cb4f6f7d"
 
 [[package]]
 name = "stable_deref_trait"
