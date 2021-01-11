@@ -74,7 +74,6 @@ const APP: () = {
 
         // Set interrupt rising trigger
         dp.EXTI.ftsr.write(|w| w.tr13().set_bit());
-        dp.EXTI.rtsr.write(|w| w.tr13().set_bit());
 
         let exti = dp.EXTI;
 
